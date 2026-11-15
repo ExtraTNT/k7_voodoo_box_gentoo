@@ -195,7 +195,8 @@ Remove it all: `wsl --unregister s2466-build`.
 | Dev (`@dev`, not installed) | cmake, ninja, gdb, strace — for the Glide engine |
 | **Not possible** | **Steam**: the Linux client is 64-bit and Valve has not supported 32-bit-only systems since 2016; the Athlon MP has no 64-bit mode. **Firefox, SeaMonkey** need Rust → SSE2, **Chromium** needs SSE3, see [Limits](#limits-of-this-cpu-no-sse2). |
 
-Add more in `portage/sets/s2466`, then `up` on the box.
+Add more in `portage/sets/s2466`, commit + push, then `up` on the box (pulls,
+then runs `bootstrap.sh`).
 
 ## The system
 
