@@ -3,7 +3,8 @@
 You should never need this repo, it's just for setting up a old machine.
 
 A lean 32-bit Gentoo for a retro workstation: 2× Athlon MP 2200+, 3 GB RAM,
-PATA disk, Radeon 9000 Pro (X/i3) + Voodoo 3 (Glide), SB X-Fi, 3Com 3c920.
+PATA disk, Voodoo 3 AGP (X/i3 + Glide; a Radeon 9000 Pro works too — one AGP
+slot, so either/or), SB X-Fi, 3Com 3c920.
 
 Everything is built on your PC (Linux or WSL); the Athlons compile (almost)
 nothing. You need a CD-R and a git repo on any git host — no server of your own.
@@ -61,7 +62,7 @@ powershell -ExecutionPolicy Bypass -File wsl\setup.ps1 -Location S:\wsl\s2466-bu
    .\wsl\run test/live-test.sh
    ```
 7. Burn the ISO to a CD-R. On the S2466: BIOS → onboard USB **off** (AMD-768
-   erratum), PS/2 keyboard, primary VGA = AGP, boot CD → HDD. Boot the CD; it
+   erratum), PS/2 keyboard, boot CD → HDD. Boot the CD; it
    asks for the disk confirmation and passwords, installs, reboots. First boot
    shows its progress on VT 8, fetches the repo + packages, and reboots into
    i3. The box needs internet during the install.
@@ -209,8 +210,11 @@ key, and right Alt is AltGr on the Swiss layout. On a keyboard with Win keys,
 empty `X_KEYOPTIONS` and Win works as Meta. `touch ~/.nox` to stay on the console.
 
 **Glide:** the kernel leaves `/dev/mem` and `iopl()` unrestricted and has no
-`tdfxfb`, so the Voodoo 3 is free; X runs only on the Radeon (PCI address
-pinned in `/etc/X11/xorg.conf.d/20-radeon.conf`). Next: `doas emerge @dev`,
+`tdfxfb`, so the Voodoo 3 is free for Glide. X runs on it through the `vesa`
+driver (Gentoo has no `tdfx` driver any more): 1280×1024, 16 bit, unaccelerated
+2D — fine for terminals. A Glide program takes the card over fullscreen; X
+redraws when it exits (or switch VTs once). With a Radeon in the AGP slot
+instead, X uses it (`/etc/X11/xorg.conf.d/20-radeon.conf`). Next: `doas emerge @dev`,
 build glide3x for `h3`, e.g. <https://github.com/Danaozhong/3dfx-Glide-API>,
 run fullscreen as root.
 

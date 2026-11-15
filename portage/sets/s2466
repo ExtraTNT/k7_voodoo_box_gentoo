@@ -12,6 +12,9 @@ x11-apps/xinit
 x11-apps/xset
 x11-apps/xrdb
 x11-apps/setxkbmap
+# Voodoo 3 (default, AGP): vesa — Gentoo has no tdfx driver any more.
+# Radeon (if swapped into the AGP slot): ati.  X auto-detects.
+x11-drivers/xf86-video-vesa
 x11-drivers/xf86-video-ati
 x11-drivers/xf86-input-libinput
 

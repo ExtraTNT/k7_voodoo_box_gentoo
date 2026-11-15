@@ -133,7 +133,7 @@ EndSection
 EOF
     log "Radeon at $busid"
   else
-    warn "no ATI/AMD VGA found — X will auto-detect"
+    log "no Radeon — X uses the Voodoo 3 via vesa"
     rm -f /etc/X11/xorg.conf.d/20-radeon.conf
   fi
 
