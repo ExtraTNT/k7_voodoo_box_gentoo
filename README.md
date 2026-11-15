@@ -19,41 +19,85 @@ nothing. You need a CD-R and a git repo on any git host — no server of your ow
 Everything is configured in **`install.conf`** (disk, user, keymap, git URL,
 CFLAGS, USE, kernel, ISO). Edit it first.
 
-All commands run as root on Linux — in WSL use a separate distro, see
-[Build environment](#build-environment).
+**Where things run:** the build scripts (`build/`, `iso/`, `test/`) are Linux
+scripts that need root (chroot, mounts, squashfs). On Windows they run in a
+separate WSL distro, `s2466-build` — `wsl/run.sh` starts them there from Git
+Bash. `bootstrap.sh` is *not* for your PC: it runs on the S2466 (stage 2).
+
+---
+
+## Quickstart (Windows: Git Bash + WSL)
+
+**Once:** the build distro (Alpine, ~200 MB of tools; your other WSL distros
+are not touched). In PowerShell, in the repo:
+```powershell
+powershell -ExecutionPolicy Bypass -File wsl\setup.ps1 -Location S:\wsl\s2466-build
+```
+
+**Then, in Git Bash, in the repo:**
+
+1. Edit `install.conf` — at least `DISK`, `USERNAME`, keymaps, `REPO_URL`.
+2. Push the repo to `REPO_URL` (empty repo on GitHub etc.):
+   ```sh
+   git add -A && git commit -m "my config"
+   git push -u origin master
+   ```
+3. Prebuild packages + kernel (first time ~1 h, later minutes):
+   ```sh
+   ./wsl/run.sh build/prebuild.sh
+   ```
+4. Publish them to the `binpkgs` branch, push from here (your git credentials
+   live in Git Bash):
+   ```sh
+   ./wsl/run.sh build/publish.sh
+   git push -f origin binpkgs
+   ```
+5. Build the CD image → `iso/out/s2466-autoinstall.iso` (~405 MiB):
+   ```sh
+   ./wsl/run.sh iso/build-iso.sh
+   ```
+6. Optional — try it all in a VM window first (see [3](#3-live-test-vm)):
+   ```sh
+   ./wsl/run.sh test/live-test.sh
+   ```
+7. Burn the ISO to a CD-R. On the S2466: BIOS → onboard USB **off** (AMD-768
+   erratum), PS/2 keyboard, primary VGA = AGP, boot CD → HDD. Boot the CD; it
+   asks for the disk confirmation and passwords, installs, reboots. First boot
+   shows its progress on VT 8, fetches the repo + packages, and reboots into
+   i3. The box needs internet during the install.
+
+Do 3–5 shortly before installing: the mirrors keep old portage trees and
+stage3s only for a few weeks — after that the box compiles what no longer
+matches. Changed `install.conf`? Commit + push it and redo step 5 (the CD
+carries a copy).
+
+On a Linux PC: same steps, run the scripts with `sudo bash SCRIPT` instead of
+`./wsl/run.sh SCRIPT`.
 
 ---
 
 ## 1. Build the ISO
 
 ```sh
-sudo bash build/prebuild.sh      # packages + kernel, ~1 h first time, minutes later
-sudo bash iso/build-iso.sh       # -> iso/out/s2466-autoinstall.iso (fits an 80-min CD-R)
+./wsl/run.sh build/prebuild.sh   # packages + kernel, ~1 h first time, minutes later
+./wsl/run.sh iso/build-iso.sh    # -> iso/out/s2466-autoinstall.iso (fits an 80-min CD-R)
 ```
 
 * `prebuild.sh` starts a **fresh i686 stage3 chroot** and does what the
   installer and `bootstrap.sh` would do, with `-march=athlon-mp`, keeping every
-  binary package. Output: `/var/tmp/s2466-prebuilt` (stage-1 packages, all
-  packages, kernel, tree snapshot date). Downloads and packages are cached.
+  binary package. Output (inside WSL): `/var/tmp/s2466-prebuilt` (stage-1
+  packages, all packages, kernel, tree snapshot date). Downloads and packages
+  are cached in `/var/tmp/s2466-cache`.
 * `build-iso.sh` takes the official Gentoo x86 minimal ISO (verified), adds
   the installer, `install.conf`, the prebuilt kernel and stage-1 packages,
   drops live-CD firmware this board does not need, and adds a default boot
   entry *Auto-install* (the stock live-CD entries stay).
 
-Burn it, then on the S2466: BIOS → onboard USB **off** (AMD-768 erratum),
-PS/2 keyboard, primary VGA = AGP, boot CD → HDD. Boot the CD: it asks for the
-disk confirmation and passwords, installs, reboots; first boot fetches the
-git repo and finishes (`tail -f /var/log/firstboot.log`), then reboots into
-i3. The box needs internet during the install.
-
 ## 2. Build the git repo
 
 ```sh
-git init -b master && git add -A && git commit -m init
-git remote add origin <REPO_URL from install.conf>
-git push -u origin master
-
-bash build/publish.sh            # prebuilt packages -> branch 'binpkgs'
+git push -u origin master          # the repo itself
+./wsl/run.sh build/publish.sh      # prebuilt packages -> local branch 'binpkgs'
 git push -f origin binpkgs
 ```
 
@@ -64,9 +108,6 @@ git push -f origin binpkgs
   from it and syncs the portage tree to the same snapshot, so the packages
   match. Only what does not match is compiled on the Athlons.
 
-Rebuild + publish shortly before installing: the mirrors keep old tree
-snapshots and stage3s only for a few weeks.
-
 **Later updates:** change things here → `prebuild.sh` → `publish.sh` → push
 both branches. On the box:
 ```sh
@@ -76,19 +117,21 @@ cd ~/system && git pull && doas bash bootstrap.sh     # alias: up
 ## 3. Live test (VM)
 
 ```sh
-sudo bash test/live-test.sh            # prepare + run
-sudo bash test/live-test.sh run        # boot again with a fresh disk
+./wsl/run.sh test/live-test.sh             # prepare + run
+./wsl/run.sh test/live-test.sh run         # boot again with a fresh disk
+./wsl/run.sh REBUILD=1 test/live-test.sh   # also redo the test prebuild
 ```
 
-Builds a test variant of everything below `/var/tmp/s2466-test` and runs the
-whole flow in QEMU (KVM, 3 GB RAM, IDE, PS/2): CD install → first boot →
-i3, unattended. The window shows up on the Windows desktop through **WSLg**;
-progress also goes to `/var/tmp/s2466-test/serial.log`.
+Builds a test variant of everything below `/var/tmp/s2466-test` (inside WSL)
+and runs the whole flow in QEMU (KVM, 3 GB RAM, IDE): CD install → first boot
+→ i3, unattended, ~20 min. The window shows up on the Windows desktop through
+**WSLg** — leave it open; closing it ends the VM. Progress also goes to
+`/var/tmp/s2466-test/serial.log`.
 
 * Your `install.conf` + overrides: unattended wipe, serial console, and the
   repo served by a local `git daemon` instead of the git host.
-* Login in the VM: `hugisv` / `test` (root: `test`). First boot shows its
-  progress on VT 8 (Alt+F1: login); autologin + i3 come after its reboot.
+* Login in the VM: your `USERNAME` / `test` (root: `test`). First boot shows
+  its progress on VT 8 (Alt+F1: login); autologin + i3 come after its reboot.
 * In the window: **CapsLock is Meta** (Windows keeps the Win key for itself),
   the mouse is a USB tablet (no drift), **Ctrl+Alt+G** grabs the keyboard so
   other combos reach the VM.
@@ -100,14 +143,15 @@ progress also goes to `/var/tmp/s2466-test/serial.log`.
 
 ## Build environment
 
-A separate, disposable WSL distro keeps your normal one untouched:
-```powershell
-wsl --import s2466-build S:\wsl\s2466-build alpine-minirootfs-<ver>-x86_64.tar.gz
-wsl -d s2466-build -u root -- apk add bash coreutils util-linux findutils tar xz wget `
-    git git-daemon xorriso squashfs-tools qemu-system-i386 qemu-img qemu-ui-gtk
-wsl -d s2466-build -u root            # then cd /mnt/a/src/debian-32
-```
-Remove everything with `wsl --unregister s2466-build`.
+`wsl/setup.ps1` creates the distro (Alpine minirootfs, checksum verified,
+`wsl --import`) and installs: bash, coreutils, util-linux, GNU tar, xz,
+wget/curl, git + git-daemon, xorriso, squashfs-tools, QEMU with GTK window.
+Running it again only reinstalls the packages. `wsl/run.sh` maps the repo
+path (`A:\…` → `/mnt/a/…`) and runs the script there as root; set
+`S2466_WSL` for another distro name. Everything lives in the distro's disk
+(`/var/tmp/s2466-*`, ~15 GB after a live test).
+
+Remove it all: `wsl --unregister s2466-build`.
 
 ## Files
 
@@ -117,6 +161,7 @@ Remove everything with `wsl --unregister s2466-build`.
 | `build/prebuild.sh`, `build/publish.sh` | prebuild packages + kernel; put them into `binpkgs` |
 | `iso/build-iso.sh` | builds the installer ISO |
 | `test/live-test.sh` | the VM test |
+| `wsl/setup.ps1`, `wsl/run.sh` | create the WSL build distro; run a script in it from Git Bash |
 | `installer/` | stage 1 (live CD + chroot) and the first-boot launcher |
 | `bootstrap.sh` | stage 2, idempotent — re-run after every change |
 | `lib/` | shared code: config, make.conf, kernel, GRUB, tree sync |
