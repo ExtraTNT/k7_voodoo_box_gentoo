@@ -32,7 +32,7 @@ PowerShell (`./wsl/run.sh` from Git Bash). `bootstrap.sh` is *not* for your PC: 
 **Once:** the build distro (Alpine, ~200 MB of tools; your other WSL distros
 are not touched). In PowerShell, in the repo:
 ```powershell
-powershell -ExecutionPolicy Bypass -File wsl\setup.ps1 -Location S:\wsl\s2466-build
+powershell -ExecutionPolicy Bypass -File wsl\setup.ps1 -Location whereYouWantYourWSL
 ```
 
 **Then, in PowerShell, in the repo** (Git Bash: `./wsl/run.sh` instead of
@@ -175,6 +175,27 @@ Remove it all: `wsl --unregister s2466-build`.
 | `post/` | the boot screen (`s2466-post` + its OpenRC service) |
 | `rootfs/` | files copied to `/` (sysctl, BFQ udev rule) |
 | `dotfiles/` | symlinked into `$HOME` — edit here, it is live |
+| `art/` | `wallpaper.py`: renders the wallpaper from the Gentoo logo SVG |
+
+## What is installed
+
+| | |
+|---|---|
+| Base | Gentoo x86 (i686) stage3, OpenRC, Portage, GCC; kernel 6.18 (`gentoo-sources`, own config, no initramfs); GRUB; `doas`; git; busybox (NTP); `dhcpcd`; pciutils; `linux-firmware` (Radeon microcode only) |
+| Display | Xorg (suid, `startx`, no display manager); driver `vesa` for the Voodoo 3, `ati` for a Radeon; libinput |
+| Window manager | i3 + i3bar/i3status |
+| Launcher | rofi (apps, commands, windows) |
+| Terminal | rxvt-unicode (`urxvtd` + `urxvtc`), tmux |
+| Browser | NetSurf (`web`: HTML/CSS, basic JavaScript); Dillo (`dillo`: faster, no JavaScript); w3m (in the terminal) |
+| Wallpaper | Gentoo logo as pixel art in the theme's amber, xterm-256 colours only (`art/wallpaper.py`), set by feh |
+| Editor | vim (no X, no scripting languages) |
+| Tools | htop, alsa-utils (`alsamixer`), acpid (power button) |
+| Font | Terminus (bitmap, X core + console) |
+| Remote | openssh, only if `SSH_AUTHORIZED_KEY` is set |
+| Dev (`@dev`, not installed) | cmake, ninja, gdb, strace — for the Glide engine |
+| **Not possible** | **Steam**: the Linux client is 64-bit and Valve has not supported 32-bit-only systems since 2016; the Athlon MP has no 64-bit mode. **Firefox, SeaMonkey** need Rust → SSE2, **Chromium** needs SSE3, see [Limits](#limits-of-this-cpu-no-sse2). |
+
+Add more in `portage/sets/s2466`, then `up` on the box.
 
 ## The system
 
@@ -222,6 +243,7 @@ run fullscreen as root.
 
 * **Rust** on 32-bit x86 needs SSE2 → `USE=-rust`; anything that *requires*
   Rust (librsvg, Firefox, …) is out. Git 3.0 plans to require Rust.
+* **Steam** needs a 64-bit (x86-64) CPU.
 * No 3D on the Radeon 9000 in current Mesa (r200 left with Mesa 22); 2D is fine.
 * `app-admin/doas` is only `~x86` (see `portage/package.accept_keywords`).
 

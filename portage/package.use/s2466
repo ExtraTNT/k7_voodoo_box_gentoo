@@ -24,3 +24,8 @@ x11-misc/rofi        -wayland
 x11-misc/i3status    -pulseaudio
 app-editors/vim      -X -python -perl -ruby -lua -acl -gpm -sound
 app-editors/vim-core -acl
+x11-libs/fltk -opengl              # dillo needs no GL
+# NetSurf: framebuffer frontend in an X window (GTK 3 would pull in Rust)
+www-client/netsurf   fbcon truetype -gtk
+dev-libs/libnsfb     X
+net-libs/libdom      xml

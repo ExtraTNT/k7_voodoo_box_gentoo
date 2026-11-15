@@ -10,6 +10,12 @@ xset fp rehash
 xset b off
 xset r rate 250 40
 
+# wallpaper (art/wallpaper.py): scaled with hard pixel edges, borders in the
+# theme background if the screen is not 5:4
+command -v feh >/dev/null &&
+    feh --no-fehbg --bg-max --force-aliasing --image-bg '#121212' \
+        "$HOME/.config/wallpaper/s2466.png"
+
 # urxvt daemon: every new terminal is a cheap client
 urxvtd -q -o -f
 

@@ -25,6 +25,15 @@ x11-misc/rofi
 x11-terms/rxvt-unicode
 media-fonts/terminus-font
 
+# browsers (Firefox & co. need Rust/SSE2): netsurf (JavaScript), dillo (fast,
+# no JS), w3m (terminal)
+www-client/netsurf
+www-client/dillo
+www-client/w3m
+
+# wallpaper
+media-gfx/feh
+
 # terminal tools
 app-misc/tmux
 app-editors/vim

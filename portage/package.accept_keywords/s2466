@@ -1,2 +1,10 @@
 # Packages that are only ~x86 (testing) on x86. Keep this list short.
 app-admin/doas ~x86
+www-client/dillo ~x86
+# NetSurf (browser with JavaScript) and its libraries
+www-client/netsurf ~x86
+dev-libs/nsgenbind ~x86
+dev-libs/libnsutils ~x86
+dev-libs/libnsfb ~x86
+media-libs/libsvgtiny ~x86
+media-libs/libnspsl ~x86

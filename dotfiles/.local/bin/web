@@ -1,0 +1,38 @@
+#!/bin/sh
+# web [URL] — NetSurf (with JavaScript) in X, fullscreen in i3.
+#
+# NetSurf's framebuffer frontend draws into a plain X window of fixed size: it
+# cannot resize, has no title/class for i3 rules, and its pixel format must
+# match the X depth.  So: start it at the screen size and X depth, wait for
+# i3's "new window" event, and make that window fullscreen.
+# Meta+Shift+q closes it.  Choices: ~/.netsurf/Choices-fb (written on exit).
+url=${1:-about:welcome}
+
+# screen size from i3 (first active output)
+rect=$(i3-msg -t get_outputs | grep -o '"active":true[^}]*"rect":{[^}]*}' | head -n1)
+w=$(printf '%s' "$rect" | sed -n 's/.*"width":\([0-9]*\).*/\1/p')
+h=$(printf '%s' "$rect" | sed -n 's/.*"height":\([0-9]*\).*/\1/p')
+
+# X depth from the server log: vesa on the Voodoo runs 16 bit, a Radeon 24
+d=${DISPLAY#*:}; d=${d%%.*}
+for log in "$HOME/.local/share/xorg/Xorg.$d.log" "/var/log/Xorg.$d.log"; do
+    [ -r "$log" ] && depth=$(grep -m1 -oE 'Depth (8|15|16|24)' "$log" | grep -oE '[0-9]+') && break
+done
+case $depth in 24) bpp=32 ;; 8) bpp=8 ;; *) bpp=16 ;; esac
+
+# subscribe first, then start: the first window event is NetSurf's
+event=$(mktemp)
+i3-msg -t subscribe '[ "window" ]' > "$event" &
+sub=$!
+sleep 0.2
+netsurf-fb -f x -w "${w:-1280}" -h "${h:-1024}" -b "$bpp" "$url" &
+ns=$!
+for _ in $(seq 50); do                       # up to 10 s on an Athlon
+    kill -0 "$sub" 2>/dev/null || break
+    sleep 0.2
+done
+kill "$sub" 2>/dev/null
+con=$(grep -o '"change":"new"[^{]*"container":{"id":[0-9]*' "$event" | grep -oE '[0-9]+$')
+rm -f "$event"
+[ -n "$con" ] && i3-msg -q "[con_id=$con] fullscreen enable"
+wait "$ns"
