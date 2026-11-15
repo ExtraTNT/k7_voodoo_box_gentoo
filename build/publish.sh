@@ -31,4 +31,4 @@ commit=$(g -c user.name="${GIT_AUTHOR_NAME:-prebuild}" -c user.email="${GIT_AUTH
   commit-tree "$tree" -m "prebuilt packages + kernel, tree $(cat "$PREBUILT/SNAPSHOT")")
 g update-ref "refs/heads/$BRANCH" "$commit"
 log "$BRANCH -> ${commit:0:12} ($(du -sh "$PREBUILT/binpkgs" | cut -f1) packages)"
-log "upload with:  git push -f origin $BRANCH   (from Git Bash: your credentials live there)"
+log "upload with:  git push -f origin $BRANCH   (from Windows: PowerShell or Git Bash)"

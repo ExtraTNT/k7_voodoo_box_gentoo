@@ -1,3 +1,5 @@
 # Everything here runs on Linux: never let Windows check out CRLF.
 * text=auto eol=lf
 *.iso binary
+# cmd.exe wants CRLF
+*.cmd text eol=crlf

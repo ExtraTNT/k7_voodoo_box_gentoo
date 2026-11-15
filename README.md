@@ -21,12 +21,12 @@ CFLAGS, USE, kernel, ISO). Edit it first.
 
 **Where things run:** the build scripts (`build/`, `iso/`, `test/`) are Linux
 scripts that need root (chroot, mounts, squashfs). On Windows they run in a
-separate WSL distro, `s2466-build` — `wsl/run.sh` starts them there from Git
-Bash. `bootstrap.sh` is *not* for your PC: it runs on the S2466 (stage 2).
+separate WSL distro, `s2466-build` — `wsl\run` starts them there from
+PowerShell (`./wsl/run.sh` from Git Bash). `bootstrap.sh` is *not* for your PC: it runs on the S2466 (stage 2).
 
 ---
 
-## Quickstart (Windows: Git Bash + WSL)
+## Quickstart (Windows + WSL)
 
 **Once:** the build distro (Alpine, ~200 MB of tools; your other WSL distros
 are not touched). In PowerShell, in the repo:
@@ -34,7 +34,8 @@ are not touched). In PowerShell, in the repo:
 powershell -ExecutionPolicy Bypass -File wsl\setup.ps1 -Location S:\wsl\s2466-build
 ```
 
-**Then, in Git Bash, in the repo:**
+**Then, in PowerShell, in the repo** (Git Bash: `./wsl/run.sh` instead of
+`.\wsl\run`, same arguments):
 
 1. Edit `install.conf` — at least `DISK`, `USERNAME`, keymaps, `REPO_URL`.
 2. Push the repo to `REPO_URL` (empty repo on GitHub etc.):
@@ -44,21 +45,20 @@ powershell -ExecutionPolicy Bypass -File wsl\setup.ps1 -Location S:\wsl\s2466-bu
    ```
 3. Prebuild packages + kernel (first time ~1 h, later minutes):
    ```sh
-   ./wsl/run.sh build/prebuild.sh
+   .\wsl\run build/prebuild.sh
    ```
-4. Publish them to the `binpkgs` branch, push from here (your git credentials
-   live in Git Bash):
+4. Publish them to the `binpkgs` branch and push it:
    ```sh
-   ./wsl/run.sh build/publish.sh
+   .\wsl\run build/publish.sh
    git push -f origin binpkgs
    ```
 5. Build the CD image → `iso/out/s2466-autoinstall.iso` (~405 MiB):
    ```sh
-   ./wsl/run.sh iso/build-iso.sh
+   .\wsl\run iso/build-iso.sh
    ```
 6. Optional — try it all in a VM window first (see [3](#3-live-test-vm)):
    ```sh
-   ./wsl/run.sh test/live-test.sh
+   .\wsl\run test/live-test.sh
    ```
 7. Burn the ISO to a CD-R. On the S2466: BIOS → onboard USB **off** (AMD-768
    erratum), PS/2 keyboard, primary VGA = AGP, boot CD → HDD. Boot the CD; it
@@ -72,15 +72,18 @@ matches. Changed `install.conf`? Commit + push it and redo step 5 (the CD
 carries a copy).
 
 On a Linux PC: same steps, run the scripts with `sudo bash SCRIPT` instead of
-`./wsl/run.sh SCRIPT`.
+`.\wsl\run SCRIPT`.
+
+(A `.sh` does not run in PowerShell — Windows just opens it with some
+program. That is what `wsl\run.cmd` is for.)
 
 ---
 
 ## 1. Build the ISO
 
 ```sh
-./wsl/run.sh build/prebuild.sh   # packages + kernel, ~1 h first time, minutes later
-./wsl/run.sh iso/build-iso.sh    # -> iso/out/s2466-autoinstall.iso (fits an 80-min CD-R)
+.\wsl\run build/prebuild.sh   # packages + kernel, ~1 h first time, minutes later
+.\wsl\run iso/build-iso.sh    # -> iso/out/s2466-autoinstall.iso (fits an 80-min CD-R)
 ```
 
 * `prebuild.sh` starts a **fresh i686 stage3 chroot** and does what the
@@ -97,7 +100,7 @@ On a Linux PC: same steps, run the scripts with `sudo bash SCRIPT` instead of
 
 ```sh
 git push -u origin master          # the repo itself
-./wsl/run.sh build/publish.sh      # prebuilt packages -> local branch 'binpkgs'
+.\wsl\run build/publish.sh      # prebuilt packages -> local branch 'binpkgs'
 git push -f origin binpkgs
 ```
 
@@ -117,9 +120,9 @@ cd ~/system && git pull && doas bash bootstrap.sh     # alias: up
 ## 3. Live test (VM)
 
 ```sh
-./wsl/run.sh test/live-test.sh             # prepare + run
-./wsl/run.sh test/live-test.sh run         # boot again with a fresh disk
-./wsl/run.sh REBUILD=1 test/live-test.sh   # also redo the test prebuild
+.\wsl\run test/live-test.sh             # prepare + run
+.\wsl\run test/live-test.sh run         # boot again with a fresh disk
+.\wsl\run REBUILD=1 test/live-test.sh   # also redo the test prebuild
 ```
 
 Builds a test variant of everything below `/var/tmp/s2466-test` (inside WSL)
@@ -146,9 +149,10 @@ and runs the whole flow in QEMU (KVM, 3 GB RAM, IDE): CD install → first boot
 `wsl/setup.ps1` creates the distro (Alpine minirootfs, checksum verified,
 `wsl --import`) and installs: bash, coreutils, util-linux, GNU tar, xz,
 wget/curl, git + git-daemon, xorriso, squashfs-tools, QEMU with GTK window.
-Running it again only reinstalls the packages. `wsl/run.sh` maps the repo
-path (`A:\…` → `/mnt/a/…`) and runs the script there as root; set
-`S2466_WSL` for another distro name. Everything lives in the distro's disk
+Running it again only reinstalls the packages. `wsl\run.cmd` (PowerShell,
+cmd) and `wsl/run.sh` (Git Bash) start `wsl/inside.sh` in the distro, as
+root, in the repo (`A:\…` → `/mnt/a/…`); script paths may use `\` or `/`.
+Set `S2466_WSL` for another distro name. Everything lives in the distro's disk
 (`/var/tmp/s2466-*`, ~15 GB after a live test).
 
 Remove it all: `wsl --unregister s2466-build`.
@@ -161,7 +165,7 @@ Remove it all: `wsl --unregister s2466-build`.
 | `build/prebuild.sh`, `build/publish.sh` | prebuild packages + kernel; put them into `binpkgs` |
 | `iso/build-iso.sh` | builds the installer ISO |
 | `test/live-test.sh` | the VM test |
-| `wsl/setup.ps1`, `wsl/run.sh` | create the WSL build distro; run a script in it from Git Bash |
+| `wsl/` | `setup.ps1` creates the WSL build distro; `run.cmd` / `run.sh` run a script in it |
 | `installer/` | stage 1 (live CD + chroot) and the first-boot launcher |
 | `bootstrap.sh` | stage 2, idempotent — re-run after every change |
 | `lib/` | shared code: config, make.conf, kernel, GRUB, tree sync |

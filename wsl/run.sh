@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Run one of this repo's Linux scripts inside the WSL build distro, as root,
-# straight from Git Bash on Windows:
+# Git Bash: run one of this repo's Linux scripts inside the WSL build distro,
+# as root.  (PowerShell / cmd: use wsl\run.cmd — a .sh does not run there.)
 #
 #   ./wsl/run.sh build/prebuild.sh
 #   ./wsl/run.sh iso/build-iso.sh
@@ -18,13 +18,6 @@ win=$(cd "$(dirname "$0")/.." && pwd -W)          # e.g. A:/src/debian-32
 drive=${win%%:*}
 repo="/mnt/${drive,,}${win#*:}"                    # -> /mnt/a/src/debian-32
 
-envs=()
-while [[ $# -gt 0 && $1 =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; do envs+=("$1"); shift; done
-[[ $# -gt 0 ]] || { echo "usage: $0 [VAR=value ...] SCRIPT [ARGS ...]" >&2; exit 2; }
-script=$1
-shift
-[[ -f $script || -f "$(dirname "$0")/../$script" ]] || { echo "no such script: $script" >&2; exit 2; }
-
 # --exec: no shell in between, arguments arrive as they are
 MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' \
-  exec wsl.exe -d "$distro" -u root --cd "$repo" --exec env "${envs[@]}" bash "$repo/$script" "$@"
+  exec wsl.exe -d "$distro" -u root --cd "$repo" --exec bash wsl/inside.sh "$@"
