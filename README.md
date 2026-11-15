@@ -1,5 +1,7 @@
 # tiger — Gentoo for the Tyan Tiger MPX S2466
 
+You should never need this repo, it's just for setting up a old machine.
+
 A lean 32-bit Gentoo for a retro workstation: 2× Athlon MP 2200+, 3 GB RAM,
 PATA disk, Radeon 9000 Pro (X/i3) + Voodoo 3 (Glide), SB X-Fi, 3Com 3c920.
 
