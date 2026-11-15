@@ -1,0 +1,82 @@
+# i3 — basic.  Meta = $mod (CapsLock on the IBM keyboard, X_KEYOPTIONS), Alt = resize.
+set $mod Mod4
+set $term urxvtc
+
+# core X font: no pango/fontconfig work per redraw on a 2002 CPU
+font -xos4-terminus-medium-r-normal--16-*-*-*-*-*-iso10646-1
+
+default_border          pixel 1
+default_floating_border pixel 1
+hide_edge_borders       smart
+focus_follows_mouse     no
+floating_modifier       $mod
+
+#                       border  bg      text    indicator child_border
+client.focused          #d7a65f #d7a65f #121212 #d7a65f   #d7a65f
+client.focused_inactive #303030 #303030 #bcbcbc #303030   #303030
+client.unfocused        #121212 #121212 #6c6c6c #121212   #121212
+client.urgent           #af5f5f #af5f5f #121212 #af5f5f   #af5f5f
+
+bindsym $mod+Return exec $term
+# rofi (~/.config/rofi/config.rasi): apps + commands / open windows
+bindsym $mod+d      exec --no-startup-id rofi -show combi
+bindsym $mod+Tab    exec --no-startup-id rofi -show window
+bindsym $mod+Shift+q      kill
+
+# focus / move
+bindsym $mod+h focus left
+bindsym $mod+j focus down
+bindsym $mod+k focus up
+bindsym $mod+l focus right
+bindsym $mod+Shift+h move left
+bindsym $mod+Shift+j move down
+bindsym $mod+Shift+k move up
+bindsym $mod+Shift+l move right
+
+# resize: Alt
+bindsym Mod1+h     resize shrink width  5 px or 5 ppt
+bindsym Mod1+j     resize grow   height 5 px or 5 ppt
+bindsym Mod1+k     resize shrink height 5 px or 5 ppt
+bindsym Mod1+l     resize grow   width  5 px or 5 ppt
+bindsym Mod1+Left  resize shrink width  5 px or 5 ppt
+bindsym Mod1+Down  resize grow   height 5 px or 5 ppt
+bindsym Mod1+Up    resize shrink height 5 px or 5 ppt
+bindsym Mod1+Right resize grow   width  5 px or 5 ppt
+
+# layout
+bindsym $mod+b splith
+bindsym $mod+v splitv
+bindsym $mod+w layout tabbed
+bindsym $mod+e layout toggle split
+bindsym $mod+f fullscreen toggle
+bindsym $mod+Shift+space floating toggle
+
+# workspaces
+bindsym $mod+1 workspace number 1
+bindsym $mod+2 workspace number 2
+bindsym $mod+3 workspace number 3
+bindsym $mod+4 workspace number 4
+bindsym $mod+5 workspace number 5
+bindsym $mod+Shift+1 move container to workspace number 1
+bindsym $mod+Shift+2 move container to workspace number 2
+bindsym $mod+Shift+3 move container to workspace number 3
+bindsym $mod+Shift+4 move container to workspace number 4
+bindsym $mod+Shift+5 move container to workspace number 5
+
+bindsym $mod+Shift+r restart
+bindsym $mod+Shift+e exec i3-msg exit
+
+bar {
+    status_command i3status
+    position       top
+    tray_output    none
+    colors {
+        background #121212
+        statusline #bcbcbc
+        separator  #303030
+        focused_workspace  #d7a65f #d7a65f #121212
+        active_workspace   #303030 #303030 #bcbcbc
+        inactive_workspace #121212 #121212 #6c6c6c
+        urgent_workspace   #af5f5f #af5f5f #121212
+    }
+}

@@ -1,0 +1,26 @@
+# Lean flags for the S2466. Global flags live in install.conf (USE_FLAGS).
+
+# ── stage 1 (base) ──────────────────────────────────────────────────────────
+sys-boot/grub        -fonts -themes -truetype -nls -device-mapper
+# -rust: rust on x86 requires SSE2 (REQUIRED_USE), the Athlon MP has none.
+# Git 3.0 plans to make Rust mandatory — then git needs a pin or the build host.
+dev-vcs/git          -perl -webdav -gpg -nls -rust
+sys-kernel/linux-firmware savedconfig -initramfs
+
+# ── X: suid Xorg instead of elogind/seatd/dbus ──────────────────────────────
+x11-base/xorg-server suid -elogind -systemd -xephyr -xnest -xvfb
+# No 3D on the Radeon 9000 in current Mesa (r200 left with Mesa 22); keep Mesa
+# tiny: software only, no LLVM (that alone would be a day of compiling).
+media-libs/mesa      -llvm -vulkan -wayland -video_cards_radeon -video_cards_radeonsi -video_cards_r600 -video_cards_r300
+x11-libs/libdrm      video_cards_radeon
+
+# ── rice ────────────────────────────────────────────────────────────────────
+x11-wm/i3            -doc
+media-libs/freetype  harfbuzz          # required by pango (i3)
+x11-terms/rxvt-unicode 256-color -perl -gdk-pixbuf -startup-notification -utmp -wtmp
+# otf: Terminus for pango (rofi) — pango cannot draw PCF bitmap fonts
+media-fonts/terminus-font X otf distinct-l
+x11-misc/rofi        -wayland
+x11-misc/i3status    -pulseaudio
+app-editors/vim      -X -python -perl -ruby -lua -acl -gpm -sound
+app-editors/vim-core -acl

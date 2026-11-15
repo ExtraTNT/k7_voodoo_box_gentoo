@@ -1,0 +1,95 @@
+/* s2466 — rofi theme matching i3 / i3bar / urxvt:
+ * charcoal, one amber accent, Terminus, 1 px border, no rounding, no icons. */
+
+* {
+    bg:     #121212;
+    bg-alt: #1c1c1c;
+    fg:     #bcbcbc;
+    dim:    #6c6c6c;
+    amber:  #d7a65f;
+    red:    #af5f5f;
+
+    background-color: @bg;
+    text-color:       @fg;
+    border-color:     @amber;
+    spacing:          0;
+    margin:           0;
+    padding:          0;
+    border:           0;
+}
+
+window {
+    location: center;
+    anchor:   center;
+    width:    560px;
+    border:   1px;
+}
+
+mainbox {
+    children: [ inputbar, message, listview ];
+}
+
+inputbar {
+    children:         [ prompt, entry ];
+    background-color: @bg-alt;
+    padding:          6px 8px;
+}
+
+prompt {
+    background-color: inherit;
+    text-color:       @amber;
+    padding:          0 8px 0 0;
+}
+
+entry {
+    background-color: inherit;
+    text-color:       @fg;
+    placeholder:      "";
+    cursor:           text;
+}
+
+message {
+    background-color: @bg-alt;
+    padding:          4px 8px;
+}
+
+textbox {
+    background-color: inherit;
+    text-color:       @dim;
+}
+
+listview {
+    lines:        10;
+    fixed-height: false;
+    scrollbar:    false;
+    padding:      4px 0;
+}
+
+element {
+    padding: 2px 8px;
+}
+element normal.normal, element alternate.normal {
+    background-color: @bg;
+    text-color:       @fg;
+}
+element normal.active, element alternate.active {
+    background-color: @bg;
+    text-color:       @amber;
+}
+element normal.urgent, element alternate.urgent {
+    background-color: @bg;
+    text-color:       @red;
+}
+element selected.normal, element selected.active {
+    background-color: @amber;
+    text-color:       @bg;
+}
+element selected.urgent {
+    background-color: @red;
+    text-color:       @bg;
+}
+element-text {
+    background-color: inherit;
+    text-color:       inherit;
+    highlight:        bold underline;
+}

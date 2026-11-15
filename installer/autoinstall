@@ -1,0 +1,244 @@
+#!/usr/bin/env bash
+# Stage 1, part A — runs on the Gentoo x86 live CD.
+#
+# Partitions DISK, unpacks a verified stage3, copies config + repo payload
+# into it and runs installer/stage1-chroot.sh inside.  Every step is
+# resumable: re-run `autoinstall` after fixing a failure and finished steps
+# are skipped (markers live on the target disk in /var/lib/autoinstall).
+set -Eeuo pipefail
+
+SHARE=${AI_SHARE:-/usr/local/share/autoinstall}
+TARGET=/mnt/gentoo
+LOG=/tmp/autoinstall.log
+PAYLOAD=/root/autoinstall            # path inside the target
+
+# shellcheck source=../lib/common.sh
+source "$SHARE/lib/common.sh"
+
+# 'ai.serial' on the kernel line mirrors everything to the first serial port
+if grep -qw ai.serial /proc/cmdline && [[ -c /dev/ttyS0 ]]; then
+  stty -F /dev/ttyS0 115200 2>/dev/null || true
+  exec > >(tee -a "$LOG" /dev/ttyS0) 2>&1
+else
+  exec > >(tee -a "$LOG") 2>&1
+fi
+trap 'warn "failed at line $LINENO: $BASH_COMMAND"; warn "log: $LOG — fix it and run: autoinstall"; exit 1' ERR
+
+cmdline_arg() { tr ' ' '\n' < /proc/cmdline | sed -n "s/^$1=//p" | tail -n1; }
+
+# ── network + clock (the live CD boots with 'nodhcp') ────────────────────────
+net_up() {
+  ip route | grep -q '^default' && return 0
+  log "starting dhcpcd"
+  dhcpcd -q -w -t 45 || true
+  ip route | grep -q '^default' || die "no network (run net-setup, then autoinstall)"
+}
+
+sync_clock() {
+  log "setting clock (old CMOS clocks break TLS)"
+  if timeout 30 chronyd -q "server $NTP_SERVER iburst" >/dev/null 2>&1 \
+     || timeout 30 busybox ntpd -n -q -p "$NTP_SERVER" >/dev/null 2>&1; then
+    :
+  else
+    # fallback: Date header over plain http
+    local d
+    d=$(wget -qS --spider "http://${GENTOO_MIRROR#*://}/" 2>&1 | sed -n 's/^ *Date: //p' | head -n1)
+    if [[ -n $d ]]; then date -s "$d" >/dev/null; else warn "could not set clock"; fi
+  fi
+  hwclock --systohc --utc 2>/dev/null || true
+  log "clock: $(date -u)"
+}
+
+# ── config ──────────────────────────────────────────────────────────────────
+pick_config() {
+  local url
+  url=$(cmdline_arg ai.conf)
+  if [[ -n $url ]]; then
+    log "config from $url"
+    fetch "$url" /tmp/install.conf || die "cannot fetch $url"
+    CONF=/tmp/install.conf
+  else
+    CONF=$SHARE/install.conf
+  fi
+  load_config "$CONF"
+  # passwords typed now must match the keyboard used later
+  loadkeys -q "$KEYMAP" 2>/dev/null || warn "console keymap $KEYMAP not found, staying on us"
+}
+
+unattended() { is_yes "$AUTO_CONFIRM"; }
+
+ask_passwords() {
+  PW_PLAIN=$(mktemp) PW_HASH=$(mktemp)
+  chmod 600 "$PW_PLAIN" "$PW_HASH"
+  [[ -n $USER_PASSWORD_HASH ]] && printf '%s:%s\n' "$USERNAME" "$USER_PASSWORD_HASH" >> "$PW_HASH"
+  [[ -n $ROOT_PASSWORD_HASH ]] && printf 'root:%s\n' "$ROOT_PASSWORD_HASH" >> "$PW_HASH"
+  if unattended; then
+    [[ -n $USER_PASSWORD_HASH ]] || warn "AUTO_CONFIRM without USER_PASSWORD_HASH: $USERNAME gets NO password — no console login, no doas (autologin into X still works)"
+    return 0
+  fi
+  local who p1 p2
+  for who in "$USERNAME" root; do
+    [[ $who == root && -n $ROOT_PASSWORD_HASH ]] && continue
+    [[ $who != root && -n $USER_PASSWORD_HASH ]] && continue
+    while :; do
+      if [[ $who == root ]]; then
+        read -rsp "root password (empty = lock root, use doas): " p1; echo
+        [[ -z $p1 ]] && break
+      else
+        read -rsp "password for $who: " p1; echo
+        [[ -z $p1 ]] && { warn "empty password not allowed"; continue; }
+      fi
+      read -rsp "again: " p2; echo
+      [[ $p1 == "$p2" ]] && { printf '%s:%s\n' "$who" "$p1" >> "$PW_PLAIN"; break; }
+      warn "passwords differ"
+    done
+  done
+}
+
+# ── disk ────────────────────────────────────────────────────────────────────
+try_resume() {
+  local root
+  root=$(part 1)
+  [[ -b $root ]] || return 1
+  mkdir -p "$TARGET"
+  mount "$root" "$TARGET" 2>/dev/null || return 1
+  if [[ -e $TARGET/var/lib/autoinstall/disk.done ]]; then
+    local done_steps
+    done_steps=$(find "$TARGET/var/lib/autoinstall" -name '*.done' -printf '%f ' | sed 's/\.done//g')
+    log "unfinished/previous install on $root: $done_steps"
+    if unattended; then return 0; fi
+    local a
+    read -rp "Resume it? [Y/n] (n = wipe and start over) " a
+    [[ ${a,,} != n* ]] && return 0
+  fi
+  umount "$TARGET"
+  return 1
+}
+
+confirm_wipe() {
+  [[ -b $DISK ]] || die "DISK $DISK is not a block device"
+  [[ $(lsblk -dno TYPE "$DISK") == disk ]] || die "$DISK is not a whole disk"
+  echo
+  lsblk -o NAME,SIZE,TYPE,FSTYPE,LABEL,MODEL "$DISK"
+  echo
+  if unattended; then warn "AUTO_CONFIRM=yes — wiping $DISK in 10 s (Ctrl-C to stop)"; sleep 10; return; fi
+  local a
+  read -rp "ALL DATA ON $DISK WILL BE LOST. Type the disk name (${DISK##*/}) to continue: " a
+  [[ $a == "${DISK##*/}" ]] || die "aborted"
+}
+
+partition_disk() {
+  swapoff -a 2>/dev/null || true
+  umount -R "$TARGET" 2>/dev/null || true
+  wipefs -qaf "$DISK"
+  local mib swap_mib=0 root_mib
+  mib=$(( $(blockdev --getsize64 "$DISK") / 1048576 ))
+  [[ $SWAP_SIZE != 0 ]] && swap_mib=$(( $(numfmt --from=iec-i "${SWAP_SIZE%B}") / 1048576 ))
+  # root first: the outer tracks of a PATA disk are the fast ones
+  root_mib=$(( mib - swap_mib - 2 ))
+  ((root_mib > 8192)) || die "disk too small (${mib} MiB)"
+  {
+    echo "label: dos"
+    echo "start=1MiB, size=${root_mib}MiB, type=83, bootable"
+    ((swap_mib > 0)) && echo "type=82"
+  } | sfdisk -q --wipe always "$DISK"
+  udevadm settle 2>/dev/null || sleep 2
+
+  # shellcheck disable=SC2086
+  mkfs.ext4 -q -F -L root $ROOT_MKFS_OPTS "$(part 1)"
+  ((swap_mib > 0)) && mkswap -q -L swap "$(part 2)"
+  mkdir -p "$TARGET"
+  mount -o "$ROOT_MOUNT_OPTS" "$(part 1)" "$TARGET"
+}
+
+# ── stage3 ──────────────────────────────────────────────────────────────────
+install_stage3() {
+  local url=$STAGE3_URL
+  # prefer the stage3 the CD's packages were built on (mirrors keep ~5 weeks)
+  if [[ -z $url && -r $SHARE/prebuilt/STAGE3 ]]; then
+    url=$(<"$SHARE/prebuilt/STAGE3")
+    if ! fetch "$url.DIGESTS" "$TARGET/stage3.DIGESTS"; then
+      warn "stage3 of the prebuilt packages is gone from the mirror — using the latest"
+      url=""
+    fi
+  fi
+  [[ -n $url ]] || url=$(gentoo_latest "$GENTOO_MIRROR/releases/x86/autobuilds/latest-stage3-$STAGE3_FLAVOR.txt")
+  log "stage3: $url"
+  fetch "$url" "$TARGET/stage3.tar.xz"
+  fetch "$url.DIGESTS" "$TARGET/stage3.DIGESTS"
+  verify_digests "$TARGET/stage3.tar.xz" "$TARGET/stage3.DIGESTS"
+  log "unpacking stage3"
+  tar xpf "$TARGET/stage3.tar.xz" --xattrs-include='*.*' --numeric-owner -C "$TARGET"
+  rm -f "$TARGET/stage3.tar.xz" "$TARGET/stage3.DIGESTS"
+}
+
+# ── hand-over into the chroot ───────────────────────────────────────────────
+copy_payload() {
+  rm -rf "${TARGET:?}$PAYLOAD"
+  mkdir -p "$TARGET$PAYLOAD"
+  cp -r "$SHARE/lib" "$SHARE/kernel" "$SHARE/portage" "$SHARE/installer" "$SHARE/post" "$TARGET$PAYLOAD/"
+  # prebuilt kernel + stage-1 packages from the CD (build/prebuild.sh)
+  if [[ -d $SHARE/prebuilt ]]; then
+    rm -rf "$TARGET/var/cache/s2466-cd"
+    mkdir -p "$TARGET/var/cache"
+    cp -r "$SHARE/prebuilt" "$TARGET/var/cache/s2466-cd"
+  fi
+  install -m 600 "$CONF" "$TARGET/etc/system.conf"
+  install -m 600 "$PW_PLAIN" "$TARGET$PAYLOAD/pw-plain"
+  install -m 600 "$PW_HASH"  "$TARGET$PAYLOAD/pw-hash"
+  cp --dereference /etc/resolv.conf "$TARGET/etc/"
+}
+
+mount_chroot() {
+  mountpoint -q "$TARGET/proc" || mount -t proc /proc "$TARGET/proc"
+  mountpoint -q "$TARGET/sys"  || { mount --rbind /sys "$TARGET/sys"; mount --make-rslave "$TARGET/sys"; }
+  mountpoint -q "$TARGET/dev"  || { mount --rbind /dev "$TARGET/dev"; mount --make-rslave "$TARGET/dev"; }
+  mountpoint -q "$TARGET/run"  || { mount --bind /run "$TARGET/run"; mount --make-slave "$TARGET/run"; }
+}
+
+finish() {
+  rm -f "$TARGET$PAYLOAD/pw-plain" "$TARGET$PAYLOAD/pw-hash" "$PW_PLAIN" "$PW_HASH"
+  mkdir -p "$TARGET/var/log"
+  cp "$LOG" "$TARGET/var/log/autoinstall.log"
+  sync
+  # gpg-agent/dirmngr (webrsync, binpkg signatures) may still hold the target
+  local p
+  for p in /proc/[0-9]*; do
+    [[ $(readlink "$p/root" 2>/dev/null) == "$TARGET" ]] && kill "${p##*/}" 2>/dev/null
+  done
+  sleep 1
+  umount -R "$TARGET" 2>/dev/null || { sleep 2; umount -Rl "$TARGET"; }
+  swapoff -a 2>/dev/null || true
+  echo
+  log "stage 1 done. After reboot the box runs stage 2 (bootstrap.sh from $REPO_URL)."
+  if read -rt 15 -p "Rebooting in 15 s — press Enter for a shell instead. " _; then
+    exit 0
+  fi
+  eject 2>/dev/null || true
+  reboot
+}
+
+main() {
+  log "S2466 Gentoo auto-installer — log: $LOG"
+  pick_config
+  net_up
+  sync_clock
+  STATE=$TARGET/var/lib/autoinstall
+  # all questions first, then it runs unattended
+  if try_resume; then
+    ask_passwords                    # only used if the 'users' step is not done yet
+  else
+    confirm_wipe
+    ask_passwords
+    partition_disk
+    mkdir -p "$STATE"; : > "$STATE/disk.done"
+  fi
+  run_step stage3 install_stage3
+  copy_payload
+  mount_chroot
+  log "entering chroot"
+  chroot "$TARGET" /bin/bash "$PAYLOAD/installer/stage1-chroot.sh"
+  finish
+}
+
+main "$@"

@@ -1,0 +1,22 @@
+/* rofi — launcher (Meta+d) and window switcher (Meta+Tab).
+ * Shift+Left/Right switches mode: combi (apps + commands) / windows / commands.
+ * Look: themes/s2466.rasi (a full theme, so rofi's default theme is not loaded). */
+
+configuration {
+    modes:                  "combi,window,run";
+    combi-modes:            "drun,run";
+    combi-hide-mode-prefix: true;
+    font:                   "Terminus 12";
+    show-icons:             false;
+    terminal:               "urxvtc";
+    matching:               "fuzzy";
+    sort:                   true;
+    drun-display-format:    "{name}";
+    window-format:          "{w}  {c}  {t}";
+    display-combi:          "run";
+    display-window:         "win";
+    display-run:            "cmd";
+    display-drun:           "app";
+}
+
+@theme "s2466"

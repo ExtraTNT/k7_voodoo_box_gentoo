@@ -1,0 +1,6 @@
+# @dev — for the Glide engine work. Not installed by default:
+#   doas emerge --noreplace @dev
+dev-build/cmake
+dev-build/ninja
+dev-debug/gdb
+dev-debug/strace

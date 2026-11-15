@@ -1,0 +1,2 @@
+# BFQ keeps the desktop responsive while emerge hammers the PATA disk.
+ACTION=="add|change", KERNEL=="sd[a-z]", ATTR{queue/rotational}=="1", ATTR{queue/scheduler}="bfq"

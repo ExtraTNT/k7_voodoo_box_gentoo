@@ -1,0 +1,17 @@
+#!/bin/sh
+# One-shot stage-2 launcher. Does nothing once stage2.done exists.
+# Shows its progress live on VT 8 (tty1 keeps the login prompt);
+# 'ai.serial' on the kernel line (KERNEL_CMDLINE) also mirrors it to COM1.
+[ -e /var/lib/autoinstall/stage2.done ] && exit 0
+[ -e /run/firstboot.running ] && exit 0
+: > /run/firstboot.running
+touch /var/log/firstboot.log
+if grep -qw ai.serial /proc/cmdline && [ -c /dev/ttyS0 ]; then
+  nohup sh -c '/usr/local/sbin/firstboot 2>&1 | tee -a /var/log/firstboot.log > /dev/ttyS0' >/dev/null 2>&1 &
+else
+  nohup /usr/local/sbin/firstboot >> /var/log/firstboot.log 2>&1 &
+fi
+# live view; Alt+F1 back to the login
+if command -v openvt >/dev/null 2>&1; then
+  openvt -s -c 8 -- sh -c 'printf "\033[H\033[2J stage 2 is setting up the system — this screen follows /var/log/firstboot.log (Alt+F1: login)\n\n"; exec tail -n +1 -F /var/log/firstboot.log' >/dev/null 2>&1 || true
+fi

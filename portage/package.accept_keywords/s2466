@@ -1,0 +1,2 @@
+# Packages that are only ~x86 (testing) on x86. Keep this list short.
+app-admin/doas ~x86

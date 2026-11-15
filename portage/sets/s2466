@@ -1,0 +1,28 @@
+# @s2466 — everything stage 2 installs on top of the base system.
+# Add packages here, then: doas ~/system/bootstrap.sh
+
+# hardware
+sys-kernel/linux-firmware
+media-sound/alsa-utils
+sys-power/acpid
+
+# X (suid Xorg, startx, no display manager)
+x11-base/xorg-server
+x11-apps/xinit
+x11-apps/xset
+x11-apps/xrdb
+x11-apps/setxkbmap
+x11-drivers/xf86-video-ati
+x11-drivers/xf86-input-libinput
+
+# the rice
+x11-wm/i3
+x11-misc/i3status
+x11-misc/rofi
+x11-terms/rxvt-unicode
+media-fonts/terminus-font
+
+# terminal tools
+app-misc/tmux
+app-editors/vim
+sys-process/htop

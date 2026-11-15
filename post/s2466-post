@@ -1,0 +1,161 @@
+#!/bin/bash
+# s2466-post — POST-style boot screen: what the kernel found, plus its
+# warnings and errors.  Started once by /etc/init.d/s2466-post (boot
+# runlevel, with --clear).  Run it by hand any time:  s2466-post
+export LC_ALL=C
+
+AMB=$'\e[0;33m' WRN=$'\e[1;33m' ERR=$'\e[1;31m' DIM=$'\e[1;30m' BLD=$'\e[1;37m' RST=$'\e[0m'
+[[ ${1:-} == --clear ]] && printf '\e[H\e[2J'
+
+read -r ROWS COLS < <(stty size </dev/console 2>/dev/null || stty size 2>/dev/null || echo "25 80")
+((COLS > 20)) || COLS=80
+((ROWS > 10)) || ROWS=25
+LINES_USED=0
+
+out()   { printf '%s\n' "$1"; LINES_USED=$((LINES_USED + 1)); }
+# cut to the screen width (the VGA console is 80 columns)
+fit()   { local s=$1 w=$((COLS - 1)); ((${#s} > w)) && s="${s:0:w-1}~"; printf '%s' "$s"; }
+found() { out " ${AMB}found${RST} $(fit "$*")"; }
+
+# "Advanced Micro Devices, Inc. [AMD/ATI]" -> "AMD/ATI", "3dfx Interactive, Inc." -> "3dfx Interactive"
+short_vendor() {
+  local v=$1
+  [[ $v =~ \[([^]]+)\] ]] && { echo "${BASH_REMATCH[1]}"; return; }
+  v=${v%%,*}; v=${v% Inc.}; v=${v% Corporation}; v=${v% Ltd.}; echo "$v"
+}
+
+# one line per PCI device of a class: slot|vendor|device|subsystem device
+pci_class() { # CLASS (e.g. 0300)
+  command -v lspci >/dev/null || return 0
+  lspci -vmm -D -d "::$1" 2>/dev/null | awk -F'\t' '
+    /^Slot:/    {slot=$2}
+    /^Vendor:/  {ven=$2}
+    /^Device:/  {dev=$2}
+    /^SDevice:/ {sdev=$2}
+    /^$/        {if (slot) print slot "|" ven "|" dev "|" sdev; slot=ven=dev=sdev=""}
+    END         {if (slot) print slot "|" ven "|" dev "|" sdev}'
+}
+
+pci_line() { # SLOT|VENDOR|DEVICE|SDEVICE -> "AMD/ATI RV250 [Radeon 9000] (Radeon 9000 Pro) [radeon]"
+  local slot ven dev sdev drv extra=""
+  IFS='|' read -r slot ven dev sdev <<<"$1"
+  [[ -n $sdev && $sdev != "$dev" && $sdev != Device* ]] && extra=" ($sdev)"
+  drv=$(basename "$(readlink "/sys/bus/pci/devices/$slot/driver" 2>/dev/null)" 2>/dev/null)
+  [[ -n $drv && $drv != . ]] && extra+=" [$drv]"
+  echo "$(short_vendor "$ven") $dev$extra"
+}
+
+# ── header ──────────────────────────────────────────────────────────────────
+# early in boot the hostname service has not run yet -> read the config
+host=$(cat /etc/hostname 2>/dev/null)
+[[ -n $host ]] || host=$(sed -n 's/^hostname="\{0,1\}\([^"]*\)"\{0,1\}/\1/p' /etc/conf.d/hostname 2>/dev/null)
+[[ -n $host && $host != "(none)" ]] || host=$(</proc/sys/kernel/hostname)
+os=$( . /etc/os-release 2>/dev/null; echo "${NAME:-Linux}")
+out ""
+out " ${BLD}${host^^}${RST}   ${DIM}$os . $(uname -r) . $(uname -m)${RST}"
+out ""
+
+# ── cpus ────────────────────────────────────────────────────────────────────
+mapfile -t cpus < <(awk -F'\t*: *' '
+  /^processor/  {p=$2}
+  /^model name/ {m[p]=$2}
+  $1=="model"   {mo[p]=$2}
+  /^cpu family/ {f[p]=$2}
+  /^stepping/   {s[p]=$2}
+  /^cpu MHz/    {mhz[p]=int($2+0.5)}
+  /^cache size/ {c[p]=$2}
+  /^bogomips/   {b[p]=int($2+0.5)}
+  END {for (i = 0; i in m; i++)
+         printf "%s|%s MHz . %s . family %s model %s stepping %s . bogomips %s\n",
+                m[i], mhz[i], c[i], f[i], mo[i], s[i], b[i]}' /proc/cpuinfo)
+n=${#cpus[@]}
+found "$n cpu$( ((n == 1)) || echo s)"
+cpu_entry() { # LABEL "MODEL|DETAILS"
+  out "   ${BLD}$1${RST}  $(fit "${2%%|*}")"
+  out "         ${DIM}$(fit "${2#*|}")${RST}"
+}
+same=1
+for c in "${cpus[@]}"; do [[ $c == "${cpus[0]}" ]] || same=0; done
+if ((n > 2 && same)); then
+  cpu_entry "cpu0-$((n - 1))" "${cpus[0]}"     # many identical cores: one entry
+else
+  for i in "${!cpus[@]}"; do cpu_entry "cpu$i" "${cpus[$i]}"; done
+fi
+flags=$(awk -F': ' '/^flags/ {print $2; exit}' /proc/cpuinfo)
+shown=""
+for f in fpu mmx mmxext sse sse2 sse3 3dnow 3dnowext cmov pae apic mtrr nx lm; do
+  [[ " $flags " == *" $f "* ]] && shown+="$f "
+done
+[[ -n $shown ]] && out "         ${DIM}$(fit "$shown")${RST}"
+
+# ── memory ──────────────────────────────────────────────────────────────────
+read -r mem high < <(awk '/^MemTotal/ {t=int($2/1024)} /^HighTotal/ {h=int($2/1024)}
+                          END {print t+0, h+0}' /proc/meminfo)
+found "$mem MB ram$( ((high)) && echo " ($high MB highmem)")"
+
+# ── disks ───────────────────────────────────────────────────────────────────
+for d in /sys/block/*; do
+  name=${d##*/}
+  case $name in loop*|ram*|zram*|dm-*|md*|fd*) continue ;; esac
+  model=$(tr -s ' ' <"$d/device/model" 2>/dev/null); model=${model% }
+  vendor=$(tr -s ' ' <"$d/device/vendor" 2>/dev/null); vendor=${vendor% }
+  [[ $vendor == ATA ]] && vendor=""
+  if [[ $name == sr* ]]; then
+    found "cdrom $name: ${vendor:+$vendor }$model"
+    continue
+  fi
+  bytes=$(( $(<"$d/size") * 512 ))
+  ((bytes)) || continue
+  size=$(awk -v b="$bytes" 'BEGIN {if (b >= 1e9) printf "%.1f GB", b/1e9; else printf "%d MB", b/1e6}')
+  found "disk $name: $size  ${vendor:+$vendor }$model"
+done
+
+# ── graphics, sound ─────────────────────────────────────────────────────────
+for class in 0300 0380; do
+  while IFS= read -r dev; do
+    [[ -n $dev ]] || continue
+    slot=${dev%%|*}
+    primary=""
+    [[ $(cat "/sys/bus/pci/devices/$slot/boot_vga" 2>/dev/null) == 1 ]] && primary=", primary"
+    found "vga: $(pci_line "$dev")$primary"
+  done < <(pci_class "$class")
+done
+for class in 0401 0403; do
+  while IFS= read -r dev; do
+    [[ -n $dev ]] && found "sound: $(pci_line "$dev")"
+  done < <(pci_class "$class")
+done
+
+# ── network ─────────────────────────────────────────────────────────────────
+for i in /sys/class/net/*; do
+  ifc=${i##*/}
+  [[ $ifc == lo || ! -e $i/device ]] && continue
+  slot=$(basename "$(readlink -f "$i/device")")
+  dev=$(pci_class 0200 | grep "^$slot|" || true)
+  if [[ -n $dev ]]; then desc=$(pci_line "$dev"); else desc=$(basename "$(readlink "$i/device/driver")"); fi
+  found "net $ifc: $desc  $(<"$i/address")"
+done
+
+# ── kernel warnings + errors ────────────────────────────────────────────────
+mapfile -t errs  < <(dmesg -t -l emerg,alert,crit,err 2>/dev/null)
+mapfile -t warns < <(dmesg -t -l warn 2>/dev/null)
+ne=${#errs[@]} nw=${#warns[@]}
+out ""
+if ((ne + nw == 0)); then
+  out " ${AMB}kernel${RST} ${DIM}no warnings, no errors${RST}"
+else
+  out " ${AMB}kernel${RST} $( ((ne)) && echo "${ERR}$ne error$( ((ne == 1)) || echo s)${RST}, ")${WRN}$nw warning$( ((nw == 1)) || echo s)${RST}"
+  room=$((ROWS - LINES_USED - 3))      # leave room for OpenRC errors + login
+  ((room < 3)) && room=3
+  shown=0
+  for l in "${errs[@]}"; do
+    ((shown < room)) || break
+    out "   ${ERR}$(fit "$l")${RST}"; shown=$((shown + 1))
+  done
+  for l in "${warns[@]}"; do
+    ((shown < room)) || break
+    out "   ${WRN}$(fit "$l")${RST}"; shown=$((shown + 1))
+  done
+  ((ne + nw > shown)) && out "   ${DIM}... $((ne + nw - shown)) more: dmesg -l err,warn${RST}"
+fi
+out ""

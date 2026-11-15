@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# /usr/local/sbin/firstboot — stage-2 launcher, installed by the S2466 installer.
+# Started once by /etc/local.d/90-firstboot.start (log: /var/log/firstboot.log).
+# Safe to run by hand:  doas /usr/local/sbin/firstboot
+set -uo pipefail
+
+# shellcheck source=/dev/null
+source /etc/system.conf
+DONE=/var/lib/autoinstall/stage2.done   # not firstboot.done: that is a stage-1 step marker
+REPO=/home/$USERNAME/${REPO_NAME:-system}
+TAG="#firstboot"
+
+motd() {
+  touch /etc/motd
+  sed -i "/$TAG\$/d" /etc/motd
+  [[ -n $1 ]] && printf '%s %s\n' "$1" "$TAG" >> /etc/motd
+  return 0
+}
+
+echo "=== firstboot $(date)"
+motd ">>> stage 2 is running — follow it with: tail -f /var/log/firstboot.log"
+
+for _ in $(seq 60); do ip route | grep -q '^default' && break; sleep 2; done
+
+as_user() { runuser -u "$USERNAME" -- env HOME="/home/$USERNAME" "$@"; }
+if [[ ! -d $REPO/.git ]]; then
+  if ! as_user git clone -q --branch "${REPO_BRANCH:-master}" -- "$REPO_URL" "$REPO"; then
+    motd "!!! firstboot: cannot clone $REPO_URL — fix, then: doas /usr/local/sbin/firstboot"
+    exit 1
+  fi
+else
+  # the clone from install time may be older than what you pushed since
+  as_user git -C "$REPO" pull -q --ff-only || echo "git pull failed — using the existing clone"
+fi
+
+if bash "$REPO/bootstrap.sh"; then
+  mkdir -p "${DONE%/*}"; : > "$DONE"
+  motd ""
+  echo "=== stage 2 finished $(date)"
+  if [[ ${FIRSTBOOT_REBOOT:-yes} == yes ]]; then
+    shutdown -r +1 "stage 2 finished — rebooting into X in 1 min" &
+  fi
+else
+  motd "!!! stage 2 failed — see /var/log/firstboot.log, re-run: doas bash $REPO/bootstrap.sh"
+  exit 1
+fi

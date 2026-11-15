@@ -1,0 +1,16 @@
+#!/sbin/openrc-run
+# Boot screen: what was found + kernel warnings/errors (post/s2466-post).
+# install.conf SPLASH="yes" enables it.
+
+description="POST-style boot screen"
+
+# shellcheck disable=SC2035  # OpenRC dependency syntax, not a glob
+depend() {
+	after sysfs
+	before *
+}
+
+start() {
+	/usr/local/sbin/s2466-post --clear > /dev/console 2>&1
+	return 0
+}

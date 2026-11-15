@@ -1,0 +1,13 @@
+# Too big for the RAM tmpfs (PORTAGE_TMPFS) -> build on disk.
+# (an ebuild's "Checking for at least N GiB disk space" names its need)
+sys-kernel/gentoo-sources notmpfs.conf
+sys-devel/gcc          notmpfs.conf
+sys-devel/binutils     notmpfs.conf
+llvm-core/llvm         notmpfs.conf
+llvm-core/clang        notmpfs.conf
+dev-lang/rust          notmpfs.conf
+dev-lang/python        notmpfs.conf
+sys-libs/glibc         notmpfs.conf
+media-libs/mesa        notmpfs.conf
+dev-qt/qtbase          notmpfs.conf
+sys-kernel/linux-firmware notmpfs.conf
